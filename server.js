@@ -74,12 +74,12 @@ io.on('connection', (socket) => {
     room.started = true; room.startedAt = Date.now(); broadcast(room); done?.({ ok: true });
   });
 
-  socket.on('physical:unlock', ({ code, station, key, playerToken }, done) => {
+  socket.on('physical:unlock', ({ code, station, key, playerToken, playerName }, done) => {
     const room = rooms.get(String(code || '').toUpperCase());
     const point = checkpoints[station];
     if (!room || !room.started || !point || key !== point.key) return done?.({ ok: false, error: 'Este QR o código de partida no es válido o la misión no ha comenzado.' });
-    const player = [...room.players.values()].find((item) => item.token === String(playerToken));
-    if (!player) return done?.({ ok: false, error: 'Este dispositivo no está registrado en la sala. Vuelve al juego y entra de nuevo.' });
+    const player = [...room.players.values()].find((item) => item.token === String(playerToken)) || [...room.players.values()].find((item) => item.name.toLowerCase().startsWith(`${String(playerName || '').trim().toLowerCase()} ·`));
+    if (!player) return done?.({ ok: false, error: 'No encontramos ese jugador en la sala. Escribe el mismo nombre usado al entrar al juego.' });
     room.physical[player.token] ??= {};
     room.physical[player.token][station] = true;
     broadcast(room);
