@@ -1,7 +1,35 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Escuela Sin Rumores</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="style.css"></head>
-<style>.role-title{font:700 11px 'Space Mono';letter-spacing:1px;margin:4px 0 8px}.characters{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin:0 0 17px}.character-choice{display:flex;align-items:center;gap:7px;text-align:left;background:#fff;border:2px solid var(--ink);border-radius:9px;padding:7px;min-height:55px}.character-choice b{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--role);font-size:18px}.character-choice span{font-weight:700;font-size:12px;line-height:1.05}.character-choice small{display:block!important;text-align:left!important;margin:3px 0 0!important;font-size:9px;font-weight:400;color:#65728a}.character-choice.chosen{outline:3px solid var(--role);background:#fffdf4}.case-label{font:700 10px 'Space Mono';letter-spacing:2px;color:#65728a;margin:0 0 7px!important}.order-note{font-size:13px;background:#eae7ff;border-radius:8px;padding:8px}.answers.order .answer{width:100%;text-align:left}.phrase{width:min(100%,350px);font-size:16px;letter-spacing:1px}.multi .answer.selected{background:#72c5ed;color:var(--ink)}</style><body><main>
-<section id="lobby" class="screen active"><div class="intro"><p>🏫 ESCAPE ROOM COOPERATIVO</p><h1>EL ECO DEL<br><i>ÚLTIMO TIMBRE</i></h1><span>Ana dejó de responder después de investigar un rumor. Un mensaje cifrado aparece en cada rincón del instituto. Reconstruyan la verdad antes de que suene el último timbre.</span><div class="mini-school">▰ ▰ ▰<b>▰</b> ▰</div></div><div class="join-card"><label>Nombre de jugador<input id="name" placeholder="Ej. Sofi" maxlength="16"></label><p class="role-title">ELIGE TU PERSONAJE</p><div id="characters" class="characters"></div><button id="create">CREAR PARTIDA</button><div class="or">O ENTRA CON TU EQUIPO</div><div class="join-row"><input id="joinCode" placeholder="CÓDIGO" maxlength="5"><button id="join">ENTRAR</button></div><small>Cada personaje aporta una forma distinta de leer las pistas.</small></div></section>
-<section id="game" class="screen"><header><div class="brand">EL ECO DEL <b>ÚLTIMO TIMBRE</b></div><div id="objective">RECONSTRUYAN LA VERDAD</div><div class="team"><span class="online-dot"></span><b id="roomCode"></b><small id="team"></small></div></header><div id="school"><div class="sky"><i class="cloud c1"></i><i class="cloud c2"></i><i class="cloud c3"></i></div><div class="school-sign">INSTITUTO NUEVA MIRADA</div><div id="rooms"></div><div class="hall-floor"></div><div id="player" class="character"><div class="tag" id="playerName">Jugador</div><div class="hair"></div><div class="head"><i>•ᴗ•</i></div><div class="body"></div><div class="arm a1"></div><div class="arm a2"></div><div class="leg l1"></div><div class="leg l2"></div></div><div id="progress"></div><button id="help">¿CÓMO JUGAR?</button></div></section>
-<div id="modal"><div id="card"></div></div><div id="toast"></div>
-</main><script src="/socket.io/socket.io.js"></script><script src="game.js"></script></body></html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#10182b"><title>La Última Edición</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="dark.css">
+</head>
+<body>
+  <div class="noise"></div>
+  <main id="landing" class="landing">
+    <section class="masthead"><span class="eyebrow">RESCATE HÍBRIDO · 30 MINUTOS</span><h1>La Última<br><i>Edición</i></h1><p>Resuelvan el caso en línea, encuentren las pruebas físicas mediante QR y saquen a los periodistas antes de que se corte la señal.</p></section>
+    <section class="join-card"><div class="red-dot"></div><h2>Antes de entrar</h2><p class="entry-copy">Elige quién investigará en la redacción. El personaje solo representa tu presencia dentro del equipo.</p><div class="avatars" id="avatars"><button type="button" class="avatar active" data-avatar="Nora"><span class="figure figure-nora"><i></i><b></b><em></em></span><strong>Nora</strong><small>rastreos y fuentes</small></button><button type="button" class="avatar" data-avatar="Ivo"><span class="figure figure-ivo"><i></i><b></b><em></em></span><strong>Ivo</strong><small>datos y secuencias</small></button><button type="button" class="avatar" data-avatar="Lía"><span class="figure figure-lia"><i></i><b></b><em></em></span><strong>Lía</strong><small>imagen y contexto</small></button></div><label>Tu nombre<input id="player-name" maxlength="22" placeholder="Escribe tu nombre" autocomplete="name"></label>
+      <button id="create-room" class="primary">Crear sala de investigación <span>→</span></button>
+      <div class="divider"><span>o únete a una sala</span></div><label>Código de 4 caracteres<input id="join-code" maxlength="4" placeholder="A7K2" class="code-input"></label>
+      <button id="join-room" class="secondary">Entrar a la redacción</button><p id="landing-error" class="error"></p>
+    </section>
+  </main>
+  <div id="lobby" hidden class="lobby">
+    <header class="topbar"><div class="brand">LA ÚLTIMA <em>EDICIÓN</em></div><div class="timer muted">⏱ <span>30:00</span></div></header>
+    <main class="lobby-main"><span class="eyebrow">SALA DE ESPERA · REDACCIÓN EN VIVO</span><h1>Reúne a tu<br>equipo.</h1><div class="room-code"><small>CÓDIGO DE ACCESO</small><strong id="room-code">----</strong><button id="copy-code" title="Copiar código">⧉</button></div><p class="invite">Comparte este código. Pueden conectarse más de 30 dispositivos.</p>
+      <div class="lobby-news"><span class="pulse"></span><b>TRANSMISIÓN INTERNA</b><p>El sistema se abrirá cuando el editor dé la orden. Mientras llegan los demás, revisen la misión del equipo.</p><div class="mission-mini"><span>🔎 Investigar</span><span>🧩 Resolver</span><span>📰 Publicar con verdad</span></div></div>
+      <div class="players-box"><span>PERIODISTAS CONECTADOS <b id="player-count">1</b></span><div id="player-list" class="player-list"></div></div><button id="start-game" class="primary start">Abrir la investigación <span>→</span></button><p id="host-note" class="muted">Esperando a que el anfitrión abra la investigación.</p>
+    </main>
+  </div>
+  <div id="game" hidden>
+    <header class="topbar gamebar"><div class="brand">LA ÚLTIMA <em>EDICIÓN</em></div><div class="case-title">MISIÓN: <span>RESCATE DE LA REDACCIÓN</span></div><div id="lives" class="lives" aria-label="Vidas restantes">● ● ●</div><div class="timer">⏱ <span id="timer">30:00</span></div></header>
+    <div class="game-layout"><aside><div class="progress-label">EXPEDIENTE <span id="progress">0 / 6</span></div><nav id="room-nav"></nav><div class="evidence"><small>EVIDENCIA RECUPERADA</small><div id="evidence-list"></div></div><div class="editor-message"><b>EL EDITOR</b><p id="editor-text">“Tenemos una hora. No desperdicien ni un clic.”</p></div></aside>
+      <main id="scene" class="scene"></main>
+    </div>
+  </div>
+  <div id="toast" role="status"></div>
+  <script src="/socket.io/socket.io.js"></script><script src="app.js"></script>
+</body></html>

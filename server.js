@@ -1,44 +1,133 @@
 const express = require('express');
 const { Server } = require('socket.io');
 const path = require('path');
+const QRCode = require('qrcode');
 
 const app = express();
-const server = app.listen(process.env.PORT || 3000, () => console.log('Signal Break online'));
+const server = require('http').createServer(app);
 const io = new Server(server);
+const port = process.env.PORT || 3000;
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 const rooms = new Map();
-const code = () => Math.random().toString(36).slice(2, 7).toUpperCase();
-function state() { return { solved: [], scanned: [], players: {}, started: false }; }
-function safeName(name) { return String(name || 'Reportero').replace(/[^a-zA-Záéíóúñ0-9 _-]/g, '').slice(0, 16) || 'Reportero'; }
+const makeCode = () => Math.random().toString(36).slice(2, 6).toUpperCase();
+const cleanName = (name) => String(name || 'Periodista').trim().slice(0, 22) || 'Periodista';
+const checkpoints = {
+  photo: { key: 'BIB-2417', location: 'Biblioteca', clue: 'Coloca el QR junto al libro, mapa o ficha fotográfica preparada.' },
+  social: { key: 'INFO-FUENTE', location: 'Aula de informática', clue: 'Coloca el QR junto al computador o cartel de fuentes.' },
+  archive: { key: 'AULA-SECUENCIA', location: 'Salón de clase', clue: 'Coloca el QR junto a las cuatro tarjetas de la línea temporal.' },
+  decoder: { key: 'AUD-VERIFICA', location: 'Auditorio', clue: 'Coloca el QR junto a un parlante, micrófono o cartel de radio.' },
+  puzzle: { key: 'SOC-ORDEN', location: 'Salón de sociales', clue: 'Coloca el QR junto a las tiras de la noticia desordenada.' },
+  detective: { key: 'REC-CRONO', location: 'Rectoría', clue: 'Coloca el QR junto al sobre de cronología.' },
+  relay: { key: 'PATIO-NORA', location: 'Patio central', clue: 'Coloca el QR junto a un cartel de transmisiones de Nora.' },
+  route: { key: 'CANCHA-RUTA', location: 'Cancha', clue: 'Coloca el QR en el punto de salida señalado.' },
+  vault: { key: 'LAB-LIA', location: 'Laboratorio', clue: 'Coloca el QR junto a las cuatro fichas de evidencia.' },
+  witness: { key: 'ENF-IVO', location: 'Enfermería', clue: 'Coloca el QR junto a la declaración de Ivo.' },
+  classify: { key: 'PORTE-HECHOS', location: 'Portería / salida', clue: 'Coloca el QR en la última puerta antes de la extracción.' }
+};
 
-io.on('connection', socket => {
-  socket.on('create', ({ name }) => {
-    let id; do id = code(); while (rooms.has(id));
-    rooms.set(id, state()); socket.join(id); socket.data.room = id;
-    rooms.get(id).players[socket.id] = { name: safeName(name), color: '#ffcf4d' };
-    socket.emit('joined', { id, state: rooms.get(id) }); io.to(id).emit('sync', rooms.get(id));
+function publicState(room) {
+  return {
+    code: room.code,
+    hostId: room.hostId,
+    players: [...room.players.values()].map(({ id, name }) => ({ id, name })),
+    started: room.started,
+    startedAt: room.startedAt,
+    solved: room.solved,
+    evidence: room.evidence,
+    classifications: room.classifications,
+    finalWon: room.finalWon,
+    lives: room.lives,
+    failed: room.failed,
+    physical: room.physical
+  };
+}
+
+function broadcast(room) { io.to(room.code).emit('room:update', publicState(room)); }
+
+io.on('connection', (socket) => {
+  socket.on('room:create', ({ name }, done) => {
+    let code; do { code = makeCode(); } while (rooms.has(code));
+    const room = { code, hostId: socket.id, players: new Map(), started: false, startedAt: null,
+      solved: [], evidence: [], classifications: {}, finalWon: false, lives: 3, failed: false, physical: {} };
+    room.players.set(socket.id, { id: socket.id, name: cleanName(name) });
+    rooms.set(code, room); socket.join(code); done({ ok: true, state: publicState(room) });
   });
-  socket.on('join', ({ id, name }) => {
-    id = String(id || '').trim().toUpperCase();
-    if (!rooms.has(id)) return socket.emit('notice', 'No encontramos esa transmisión. Revisa el código.');
-    socket.join(id); socket.data.room = id;
-    rooms.get(id).players[socket.id] = { name: safeName(name), color: ['#6cf0c2','#9d8cff','#ff8494','#57c8ff'][Object.keys(rooms.get(id).players).length % 4] };
-    socket.emit('joined', { id, state: rooms.get(id) }); io.to(id).emit('sync', rooms.get(id));
+
+  socket.on('room:join', ({ code, name }, done) => {
+    const room = rooms.get(String(code || '').toUpperCase());
+    if (!room) return done({ ok: false, error: 'No encontramos esa sala. Revisa el código.' });
+    if (room.players.size >= 80) return done({ ok: false, error: 'La sala ya alcanzó su capacidad.' });
+    room.players.set(socket.id, { id: socket.id, name: cleanName(name) });
+    socket.join(room.code); broadcast(room); done({ ok: true, state: publicState(room) });
   });
-  socket.on('start', () => { const r=rooms.get(socket.data.room); if(r){r.started=true; io.to(socket.data.room).emit('sync',r);} });
-  socket.on('scan', token => {
-    const r=rooms.get(socket.data.room);
-    const checkpoints=['ECO-01','ECO-02','ECO-03','ECO-04','ECO-05','ECO-06','ECO-07'];
-    const keys=['classroom','computer','library','cafeteria','radio','lab','principal'];
-    if(!r || !r.started) return;
-    const expected=checkpoints[r.solved.length];
-    if(String(token||'').trim().toUpperCase()!==expected) return socket.emit('notice','Ese QR no corresponde a la siguiente sala. Sigan la ruta de la investigación.');
-    const key=keys[r.solved.length];
-    if(!r.scanned.includes(key)) r.scanned.push(key);
-    io.to(socket.data.room).emit('sync',r);
-    socket.emit('scan-result',{key});
+
+  socket.on('game:start', ({ code }, done) => {
+    const room = rooms.get(code);
+    if (!room || room.hostId !== socket.id) return;
+    room.started = true; room.startedAt = Date.now(); broadcast(room); done?.({ ok: true });
   });
-  socket.on('solve', key => { const r=rooms.get(socket.data.room); if(r && !r.solved.includes(key)){r.solved.push(key); io.to(socket.data.room).emit('sync',r);} });
-  socket.on('disconnect', () => { const r=rooms.get(socket.data.room); if(!r)return; delete r.players[socket.id]; if(Object.keys(r.players).length)io.to(socket.data.room).emit('sync',r); else rooms.delete(socket.data.room); });
+
+  socket.on('physical:unlock', ({ code, station, key }, done) => {
+    const room = rooms.get(String(code || '').toUpperCase());
+    const point = checkpoints[station];
+    if (!room || !point || key !== point.key) return done?.({ ok: false, error: 'Este QR o código de partida no es válido.' });
+    room.physical[station] = true;
+    broadcast(room);
+    done?.({ ok: true, location: point.location });
+  });
+
+  socket.on('game:solve', ({ code, puzzle, answer }, done) => {
+    const room = rooms.get(code);
+    if (!room || !room.started || room.finalWon) return;
+    const expected = { photo: '2417', social: 'FUENTE', archive: '3,4,1,2', decoder: 'VERIFICA', puzzle: 'TITULAR,HECHO,FUENTE,CONTEXTO,EXPLICACION', detective: 'MEDIO B', relay: 'NORA', route: 'RUTA C', vault: 'LIA', witness: 'IVO' };
+    const value = String(answer || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (expected[puzzle] !== value) { room.lives = Math.max(0, room.lives - 1); if (!room.lives) room.failed = true; broadcast(room); return done?.({ ok: false, message: room.failed ? 'La señal de los periodistas se apagó. La misión terminó.' : `Respuesta incorrecta. Quedan ${room.lives} vidas.` }); }
+    if (!room.solved.includes(puzzle)) {
+      room.solved.push(puzzle);
+      const labels = { photo: 'Contexto', social: 'Fuente verificable', archive: 'Secuencia', decoder: 'Clave', puzzle: 'Estructura', detective: 'Cronología', relay: 'Firma de Nora', route: 'Ruta segura', vault: 'Archivo íntegro', witness: 'Testimonio válido' };
+      room.evidence.push(labels[puzzle]); broadcast(room);
+    }
+    done?.({ ok: true, message: 'Archivo recuperado.' });
+  });
+
+  socket.on('game:classify', ({ code, values }, done) => {
+    const room = rooms.get(code);
+    const correct = ['hecho', 'manipulacion', 'interpretacion'];
+    if (!room || !Array.isArray(values) || values.join(',') !== correct.join(',')) { if (!room) return; room.lives = Math.max(0, room.lives - 1); if (!room.lives) room.failed = true; broadcast(room); return done?.({ ok: false, message: room.failed ? 'La señal de los periodistas se apagó. La misión terminó.' : `Clasificación incorrecta. Quedan ${room.lives} vidas.` }); }
+    room.classifications = { done: true }; if (!room.evidence.includes('VERIFICA')) room.evidence.push('VERIFICA'); broadcast(room);
+    done?.({ ok: true, message: 'La clave VERIFICA fue añadida al expediente.' });
+  });
+
+  socket.on('game:final', ({ code, choice }, done) => {
+    const room = rooms.get(code);
+    if (!room || room.solved.length < 10 || !room.classifications.done) return done?.({ ok: false, message: 'Todavía faltan puertas por abrir.' });
+    if (choice !== 'B') return done?.({ ok: false, message: 'Ese titular añade algo que el informe no demuestra.' });
+    room.finalWon = true; broadcast(room); done?.({ ok: true });
+  });
+
+  socket.on('game:timeout', ({ code }) => {
+    const room = rooms.get(code);
+    if (!room || room.finalWon) return;
+    room.lives = 0; room.failed = true; broadcast(room);
+  });
+
+  socket.on('disconnect', () => {
+    for (const room of rooms.values()) if (room.players.delete(socket.id)) {
+      if (room.hostId === socket.id) room.hostId = room.players.keys().next().value || null;
+      if (!room.players.size) rooms.delete(room.code); else broadcast(room);
+      break;
+    }
+  });
 });
+
+app.get('/api/qr/:station', async (req, res) => {
+  const point = checkpoints[req.params.station];
+  if (!point) return res.sendStatus(404);
+  const base = `${req.protocol}://${req.get('host')}`;
+  const url = `${base}/checkpoint.html?station=${encodeURIComponent(req.params.station)}&key=${encodeURIComponent(point.key)}`;
+  res.type('svg').send(await QRCode.toString(url, { type: 'svg', margin: 2, width: 500, color: { dark: '#111111', light: '#ffffff' } }));
+});
+
+server.listen(port, () => console.log(`La Última Edición en puerto ${port}`));
