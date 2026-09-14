@@ -1,7 +1,6 @@
 const express = require('express');
 const { Server } = require('socket.io');
 const path = require('path');
-const QRCode = require('qrcode');
 
 const app = express();
 const server = require('http').createServer(app);
@@ -17,14 +16,8 @@ const checkpoints = {
   photo: { key: 'BIB-2417', location: 'Biblioteca', clue: 'Coloca el QR junto al libro, mapa o ficha fotográfica preparada.' },
   social: { key: 'INFO-FUENTE', location: 'Aula de informática', clue: 'Coloca el QR junto al computador o cartel de fuentes.' },
   archive: { key: 'AULA-SECUENCIA', location: 'Salón de clase', clue: 'Coloca el QR junto a las cuatro tarjetas de la línea temporal.' },
-  decoder: { key: 'AUD-VERIFICA', location: 'Auditorio', clue: 'Coloca el QR junto a un parlante, micrófono o cartel de radio.' },
-  puzzle: { key: 'SOC-ORDEN', location: 'Salón de sociales', clue: 'Coloca el QR junto a las tiras de la noticia desordenada.' },
-  detective: { key: 'REC-CRONO', location: 'Rectoría', clue: 'Coloca el QR junto al sobre de cronología.' },
   relay: { key: 'PATIO-NORA', location: 'Patio central', clue: 'Coloca el QR junto a un cartel de transmisiones de Nora.' },
-  route: { key: 'CANCHA-RUTA', location: 'Cancha', clue: 'Coloca el QR en el punto de salida señalado.' },
-  vault: { key: 'LAB-LIA', location: 'Laboratorio', clue: 'Coloca el QR junto a las cuatro fichas de evidencia.' },
-  witness: { key: 'ENF-IVO', location: 'Enfermería', clue: 'Coloca el QR junto a la declaración de Ivo.' },
-  classify: { key: 'PORTE-HECHOS', location: 'Portería / salida', clue: 'Coloca el QR en la última puerta antes de la extracción.' }
+  route: { key: 'CANCHA-RUTA', location: 'Cancha', clue: 'Coloca el QR en el punto de salida señalado.' }
 };
 
 function publicState(room) {
@@ -72,7 +65,7 @@ io.on('connection', (socket) => {
   socket.on('physical:unlock', ({ code, station, key }, done) => {
     const room = rooms.get(String(code || '').toUpperCase());
     const point = checkpoints[station];
-    if (!room || !point || key !== point.key) return done?.({ ok: false, error: 'Este QR o código de partida no es válido.' });
+    if (!room || !room.started || !point || key !== point.key) return done?.({ ok: false, error: 'Este QR o código de partida no es válido o la misión no ha comenzado.' });
     room.physical[station] = true;
     broadcast(room);
     done?.({ ok: true, location: point.location });
@@ -81,12 +74,12 @@ io.on('connection', (socket) => {
   socket.on('game:solve', ({ code, puzzle, answer }, done) => {
     const room = rooms.get(code);
     if (!room || !room.started || room.finalWon) return;
-    const expected = { photo: '2417', social: 'FUENTE', archive: '3,4,1,2', decoder: 'VERIFICA', puzzle: 'TITULAR,HECHO,FUENTE,CONTEXTO,EXPLICACION', detective: 'MEDIO B', relay: 'NORA', route: 'RUTA C', vault: 'LIA', witness: 'IVO' };
+    const expected = { photo: '2417', social: 'FUENTE', archive: '3,4,1,2', relay: 'NORA', route: 'RUTA C' };
     const value = String(answer || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (expected[puzzle] !== value) { room.lives = Math.max(0, room.lives - 1); if (!room.lives) room.failed = true; broadcast(room); return done?.({ ok: false, message: room.failed ? 'La señal de los periodistas se apagó. La misión terminó.' : `Respuesta incorrecta. Quedan ${room.lives} vidas.` }); }
     if (!room.solved.includes(puzzle)) {
       room.solved.push(puzzle);
-      const labels = { photo: 'Contexto', social: 'Fuente verificable', archive: 'Secuencia', decoder: 'Clave', puzzle: 'Estructura', detective: 'Cronología', relay: 'Firma de Nora', route: 'Ruta segura', vault: 'Archivo íntegro', witness: 'Testimonio válido' };
+      const labels = { photo: 'Imagen verificada', social: 'Fuente rastreable', archive: 'Cronología', relay: 'Señal de Nora', route: 'Ruta de salida' };
       room.evidence.push(labels[puzzle]); broadcast(room);
     }
     done?.({ ok: true, message: 'Archivo recuperado.' });
@@ -102,7 +95,7 @@ io.on('connection', (socket) => {
 
   socket.on('game:final', ({ code, choice }, done) => {
     const room = rooms.get(code);
-    if (!room || room.solved.length < 10 || !room.classifications.done) return done?.({ ok: false, message: 'Todavía faltan puertas por abrir.' });
+    if (!room || room.solved.length < 5) return done?.({ ok: false, message: 'Todavía faltan puertas por abrir.' });
     if (choice !== 'B') return done?.({ ok: false, message: 'Ese titular añade algo que el informe no demuestra.' });
     room.finalWon = true; broadcast(room); done?.({ ok: true });
   });
@@ -122,12 +115,5 @@ io.on('connection', (socket) => {
   });
 });
 
-app.get('/api/qr/:station', async (req, res) => {
-  const point = checkpoints[req.params.station];
-  if (!point) return res.sendStatus(404);
-  const base = `${req.protocol}://${req.get('host')}`;
-  const url = `${base}/checkpoint.html?station=${encodeURIComponent(req.params.station)}&key=${encodeURIComponent(point.key)}`;
-  res.type('svg').send(await QRCode.toString(url, { type: 'svg', margin: 2, width: 500, color: { dark: '#111111', light: '#ffffff' } }));
-});
 
 server.listen(port, () => console.log(`La Última Edición en puerto ${port}`));

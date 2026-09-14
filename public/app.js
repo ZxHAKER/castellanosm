@@ -3,8 +3,7 @@ let state = null, current = 'intro', selectedOrder = [], archiveOrder = [], ciph
 let avatar = 'Nora';
 const $ = (s) => document.querySelector(s);
 const rooms = [
-  ['photo', '01', 'Sala de cámaras'], ['social', '02', 'Nodo de fuentes'], ['archive', '03', 'Archivo roto'], ['decoder', '04', 'Cifrado de rescate'],
-  ['puzzle', '05', 'Mesa de edición'], ['detective', '06', 'Ruta de escape'], ['relay', '07', 'Radio de Nora'], ['route', '08', 'Plano de evacuación'], ['vault', '09', 'Bóveda de Lía'], ['witness', '10', 'Declaración de Ivo'], ['classify', '11', 'Puerta final'], ['final', '∞', 'Extracción']
+  ['photo', '01', 'Biblioteca'], ['social', '02', 'Aula de informática'], ['archive', '03', 'Salón de clase'], ['relay', '04', 'Patio central'], ['route', '05', 'Cancha'], ['final', '∞', 'Extracción']
 ];
 const messages = [
   '“Tenemos una hora. No desperdicien ni un clic.”', '“Ese titular tiene potencial. ¿Seguro que quieren comprobar la fuente?”',
@@ -14,14 +13,8 @@ const physicalStops = {
   photo: { location: 'Biblioteca', clue: 'Busca el QR junto al libro, mapa o ficha fotográfica preparada.' },
   social: { location: 'Aula de informática', clue: 'Busca el QR junto al computador o cartel de fuentes.' },
   archive: { location: 'Salón de clase', clue: 'Busca el QR junto a las cuatro tarjetas de la línea temporal.' },
-  decoder: { location: 'Auditorio', clue: 'Busca el QR junto a un parlante, micrófono o cartel de radio.' },
-  puzzle: { location: 'Salón de sociales', clue: 'Busca el QR junto a las tiras de la noticia desordenada.' },
-  detective: { location: 'Rectoría', clue: 'Busca el QR junto al sobre de cronología.' },
   relay: { location: 'Patio central', clue: 'Busca el QR junto al cartel de transmisiones de Nora.' },
-  route: { location: 'Cancha', clue: 'Busca el QR en el punto de salida señalado.' },
-  vault: { location: 'Laboratorio', clue: 'Busca el QR junto a las cuatro fichas de evidencia.' },
-  witness: { location: 'Enfermería', clue: 'Busca el QR junto a la declaración de Ivo.' },
-  classify: { location: 'Portería / salida', clue: 'Busca el QR en la última puerta antes de la extracción.' }
+  route: { location: 'Cancha', clue: 'Busca el QR en el punto de salida señalado.' }
 };
 
 function toast(text) { const el = $('#toast'); el.textContent = text; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3500); }
@@ -51,15 +44,14 @@ function showGame() { const entering = $('#game').hidden; showOnly('game'); if (
 function escapeHtml(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
 function solved(id) { return state.solved.includes(id); }
 function isUnlocked(id, i) {
-  if (id === 'classify') return state.solved.length >= 10;
-  if (id === 'final') return state.solved.length >= 10 && state.classifications.done;
+  if (id === 'final') return state.solved.length >= 5;
   return i === 0 || solved(rooms[i - 1][0]);
 }
 function drawGame() {
   if (!state?.started) return;
   $('#lives').textContent = `● `.repeat(state.lives || 0).trim() || '—';
   $('#lives').classList.toggle('danger', (state.lives || 0) <= 1);
-  $('#progress').textContent = `${state.solved.length + (state.classifications.done ? 1 : 0)} / 11`;
+  $('#progress').textContent = `${state.solved.length} / 5`;
   $('#room-nav').innerHTML = rooms.map(([id, no, title], i) => `<button class="${current === id ? 'active ' : ''}${!isUnlocked(id, i) ? 'locked' : ''}" data-room="${id}">${solved(id) || (id === 'classify' && state.classifications.done) ? '✓' : no} · ${title}</button>`).join('');
   $('#room-nav').querySelectorAll('button').forEach(b => b.onclick = () => { const i = rooms.findIndex(r => r[0] === b.dataset.room); if (!isUnlocked(b.dataset.room, i)) return toast('Primero recuperen el archivo anterior.'); current = b.dataset.room; drawGame(); });
   $('#evidence-list').innerHTML = state.evidence.map(e => `<span class="tag">${e}</span>`).join('') || '<span class="tag">Sin pruebas</span>';
@@ -104,7 +96,6 @@ function bindScene() {
   document.querySelectorAll('[data-photo]').forEach(el => el.onclick = () => { if (photoClues.size < 3) return toast('Aún faltan metadatos. Examinen ambas imágenes.'); if (el.dataset.photo === 'right') { el.classList.add('selected'); submitPuzzle('photo', '2417'); } else toast('Esa imagen pertenece a otro año y a otro lugar.'); });
   document.querySelectorAll('[data-post]').forEach(el => el.onclick = () => { const type = el.dataset.post; socialChecks.add(type); el.classList.add('selected'); const notes = {viral:'El enlace termina en una página sin autor ni documento.',capture:'La captura no permite comprobar fecha, autor ni origen.',source:'El enlace lleva a la metodología y al informe original.'}; $('#social-clue').textContent = `${notes[type]} Fichas auditadas: ${socialChecks.size} / 3.`; if (socialChecks.size === 3 && socialChecks.has('source')) submitPuzzle('social', 'FUENTE'); });
   document.querySelectorAll('.archive-card').forEach(el => el.onclick = () => { const n = el.dataset.archive; if (archiveOrder.includes(n)) return; archiveOrder.push(n); el.classList.add('selected'); $('#archive-clue').textContent = `Cadena reconstruida: ${archiveOrder.join(' → ')}.`; if (archiveOrder.length === 4) { if (archiveOrder.join(',') === '3,4,1,2') submitPuzzle('archive','3,1,4,2'); else { toast('La cadena no coincide. Las tarjetas se reiniciaron.'); archiveOrder=[]; document.querySelectorAll('.archive-card').forEach(c=>c.classList.remove('selected')); $('#archive-clue').textContent='Cadena reconstruida: vacía.'; } } });
-  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'; const decode = () => { const value = 'WFSJGJDB'.split('').map(ch => alphabet[(alphabet.indexOf(ch) + cipherShift + 26) % 26]).join(''); $('#cipher-output').textContent = value; $('#shift-value').textContent = cipherShift; return value; }; if ($('#shift-back')) { $('#shift-back').onclick=()=>{cipherShift--;decode()};$('#shift-forward').onclick=()=>{cipherShift++;decode()};$('#decode-submit').onclick=()=>{if(decode()==='VERIFICA')submitPuzzle('decoder','VERIFICA');else toast('Todavía es ruido. Ajusten la rueda.')}};
   const seenTrace=new Set();document.querySelectorAll('.trace').forEach(el=>el.onclick=()=>{seenTrace.add(el.dataset.trace);el.style.color='#4de6d1';$('#trace-clue').textContent=`Registros inspeccionados: ${seenTrace.size} / 4.`});document.querySelectorAll('[data-accuse]').forEach(el=>el.onclick=()=>{if(seenTrace.size<4)return toast('Inspeccionen todos los registros antes de acusar.');submitPuzzle('detective',el.dataset.accuse)});
   document.querySelectorAll('[data-relay]').forEach(el=>el.onclick=()=>submitPuzzle('relay',el.dataset.relay));
   document.querySelectorAll('[data-route]').forEach(el=>el.onclick=()=>submitPuzzle('route',el.dataset.route));

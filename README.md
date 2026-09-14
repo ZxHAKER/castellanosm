@@ -28,7 +28,7 @@ Las salas se mantienen en memoria. Si Render reinicia el servicio, las partidas 
 
 ## Versión híbrida: QR y espacios físicos
 
-Después de publicar el proyecto en Render, abre `https://TU-URL-DE-RENDER/qr-print.html` e imprime las once tarjetas. Colócalas en Biblioteca, Aula de informática, Salón de clase, Auditorio, Salón de sociales, Rectoría, Patio central, Cancha, Laboratorio, Enfermería y Portería/salida.
+Después de publicar el proyecto en Render, abre `https://TU-URL-DE-RENDER/qr-print.html` e imprime las cinco tarjetas. Colócalas en Biblioteca, Aula de informática, Salón de clase, Patio central y Cancha.
 
 Cada punto físico bloquea una estación virtual. Al escanear el QR, el jugador escribe el código de la sala y la evidencia se desbloquea en tiempo real para todo el equipo. Puedes cambiar los nombres, pistas y claves de los lugares en el objeto `checkpoints` de `server.js`.
 
