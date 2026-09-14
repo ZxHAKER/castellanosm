@@ -64,11 +64,42 @@ function drawGame() {
 function header(no, title, intro) { return `<div class="scene-header"><small>ARCHIVO ${no}</small><h2>${title}</h2></div>${intro ? `<p class="brief">${intro}</p>` : ''}`; }
 function failureSound() { try { const ctx=new (window.AudioContext||window.webkitAudioContext)(); const o=ctx.createOscillator(), g=ctx.createGain(); o.type='sawtooth'; o.frequency.setValueAtTime(210,ctx.currentTime); o.frequency.exponentialRampToValueAtTime(42,ctx.currentTime+.8); g.gain.setValueAtTime(.12,ctx.currentTime); g.gain.exponentialRampToValueAtTime(.001,ctx.currentTime+.9); o.connect(g).connect(ctx.destination); o.start();o.stop(ctx.currentTime+.9); const line=new SpeechSynthesisUtterance('Señal perdida. Un periodista ha caído.'); line.rate=.8; line.pitch=.65; speechSynthesis.cancel(); speechSynthesis.speak(line); } catch {} }
 function submitPuzzle(id, answer) { socket.emit('game:solve', { code: state.code, puzzle: id, answer }, (r) => { toast(r.message); if (!r.ok) failureSound(); if (r.ok) setTimeout(() => { const ix = rooms.findIndex(x => x[0] === id); current = rooms[ix + 1][0]; drawGame(); }, 600); }); }
+async function startQrScanner() {
+  const message = $('#scan-message');
+  if (!('BarcodeDetector' in window) || !navigator.mediaDevices?.getUserMedia) { message.textContent = 'Tu navegador no permite escanear aquí. Abre la cámara normal y escanea el QR.'; return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    const video = $('#qr-video'); video.srcObject = stream; video.hidden = false; await video.play();
+    message.textContent = 'Apunta la cámara al QR del lugar físico.';
+    const detector = new BarcodeDetector({ formats: ['qr_code'] });
+    let done = false;
+    const stop = () => stream.getTracks().forEach(track => track.stop());
+    const scan = async () => {
+      if (done) return;
+      try {
+        const codes = await detector.detect(video);
+        if (codes[0]?.rawValue) {
+          const url = new URL(codes[0].rawValue);
+          const station = url.searchParams.get('station'), key = url.searchParams.get('key');
+          if (station !== current || !key) { message.textContent = 'Ese QR pertenece a otra estación.'; return requestAnimationFrame(scan); }
+          done = true; stop(); video.hidden = true;
+          socket.emit('physical:unlock', { code: state.code, station, key, playerToken }, (result) => {
+            message.textContent = result.ok ? 'QR validado. La actividad se abrió.' : result.error;
+            if (result.ok) setTimeout(drawGame, 500);
+          });
+          return;
+        }
+      } catch { message.textContent = 'No se pudo leer el QR. Manténlo centrado y con buena luz.'; }
+      requestAnimationFrame(scan);
+    };
+    scan();
+  } catch { message.textContent = 'No se pudo abrir la cámara. Permite el acceso a cámara e inténtalo de nuevo.'; }
+}
 function inputPuzzle(id, placeholder) { return `<div class="answer-row"><input id="answer" placeholder="${placeholder}" autocomplete="off"><button id="submit">Validar</button></div>`; }
 function renderScene() {
   const scene = $('#scene');
   if (current === 'intro') { scene.innerHTML = `<section class="rescue-intro"><span class="eyebrow">PRÓLOGO HÍBRIDO · 30 MINUTOS</span><h1>Tres periodistas<br>no regresaron.</h1><p>A las 23:30, Nora, Ivo y Lía enviaron una última transmisión desde una imprenta abandonada. Cada pista virtual señala un lugar real del colegio donde dejaron una prueba física.</p><p>Para avanzar, deberán caminar a cada sitio, encontrar su QR, validarlo con el código de sala y volver al tablero para analizar la evidencia.</p><div class="missing"><span>NORA<br><small>fuentes</small></span><span>IVO<br><small>datos</small></span><span>LÍA<br><small>imagen</small></span></div><p class="clue">Tienen tres intentos compartidos. Si fallan, se pierde una vida. No corran: respeten las zonas indicadas por el docente.</p><button id="begin-rescue" class="primary">Iniciar rescate <span>→</span></button></section>`; $('#begin-rescue').onclick=()=>{current='photo';drawGame()}; return; }
-  if (physicalStops[current] && !state.physical?.[playerToken]?.[current]) { const stop=physicalStops[current]; scene.innerHTML = `<section class="physical-stop"><span class="eyebrow">TRASLADO FÍSICO REQUERIDO</span><h1>${stop.location}</h1><p>Ve a este lugar, encuentra el QR e introdúcelo desde tu propio teléfono. Esta evidencia se abrirá solo en tu dispositivo.</p><div class="physical-card"><b>Pista de ubicación</b><p>${stop.clue}</p><small>Los demás jugadores deben encontrar y escanear el mismo QR para desbloquear su propia copia de la actividad.</small></div><p class="clue">No compartas el enlace del QR: cada integrante debe localizar la prueba física.</p></section>`; return; }
+  if (physicalStops[current] && !state.physical?.[playerToken]?.[current]) { const stop=physicalStops[current]; scene.innerHTML = `<section class="physical-stop"><span class="eyebrow">TRASLADO FÍSICO REQUERIDO</span><h1>${stop.location}</h1><p>Ve a este lugar y encuentra el QR. Puedes escanearlo desde la cámara del juego o con la cámara normal del teléfono.</p><div class="physical-card"><b>Pista de ubicación</b><p>${stop.clue}</p><small>Esta evidencia se abrirá solo en tu dispositivo.</small></div><button id="scan-qr" class="primary">Escanear QR con la cámara</button><video id="qr-video" hidden playsinline></video><p id="scan-message" class="clue">Al escanear el QR correcto, esta actividad se desbloqueará.</p></section>`; $('#scan-qr').onclick = startQrScanner; return; }
   if (solved(current)) { scene.innerHTML = header('RECUPERADO', rooms.find(r => r[0] === current)?.[2] || '') + `<div class="paper"><h3>Archivo seguro</h3><p>Esta evidencia ya está en el expediente. Continúen con la siguiente sala.</p></div>`; return; }
   if (current === 'headline') scene.innerHTML = header('01', 'Mesa de edición', 'No debes detectar una trampa: debes editar una noticia que pueda publicarse sin engañar a quien la lea.') + `<article class="paper editorial"><small class="eyebrow">DOSSIER · INFORME CLIMÁTICO</small><div class="source-line"><b>HECHOS CONFIRMADOS</b><br>El informe modela un escenario de riesgo alto si las emisiones continúan. No predice una fecha exacta. Los autores aclaran que el resultado depende de decisiones políticas y de tres variables con incertidumbre.</div><div class="source-line"><b>LO QUE NO PUEDES AFIRMAR</b><br>Que el planeta será inhabitable; que ocurrirá en diez años; que existe una confirmación científica cerrada.</div><div class="source-line"><b>ENCARGO</b><br>Escribe un titular de 8 a 16 palabras. Debe mencionar que se trata de un informe o de un escenario, conservar la incertidumbre y evitar una certeza no demostrada.</div><textarea id="headline-draft" maxlength="130" placeholder="Escribe el titular que sí publicarías…"></textarea><div class="draft-meta"><span id="draft-count">0 / 130</span><button id="headline-submit" class="secondary">Enviar a revisión</button></div><p id="headline-clue" class="clue">Tu equipo tendrá que defender esta decisión ante el Editor.</p></article>`;
   if (current === 'photo') scene.innerHTML = header('01', 'Biblioteca: la foto correcta', 'Busca la tarjeta física de la biblioteca. En ella aparecen una fecha, un lugar y un número de archivo. Después elige en pantalla la foto que coincide.') + `<article class="paper"><div class="source-line"><b>TARJETA FÍSICA</b>: 24 de julio de 2024 · Barrio Central · Archivo 17.</div><div class="photo-grid"><button class="photo choice-photo" data-photo="wrong"><b>Foto A</b><br><small>17 de julio de 2017 · Puerto Norte</small></button><button class="photo two choice-photo" data-photo="right"><b>Foto B</b><br><small>24 de julio de 2024 · Barrio Central</small></button></div><div class="clue">Acción: selecciona la foto que coincide exactamente con la tarjeta física.</div></article>`;

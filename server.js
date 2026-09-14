@@ -1,6 +1,7 @@
 const express = require('express');
 const { Server } = require('socket.io');
 const path = require('path');
+const QRCode = require('qrcode');
 
 const app = express();
 const server = require('http').createServer(app);
@@ -19,6 +20,17 @@ const checkpoints = {
   relay: { key: 'PATIO-NORA', location: 'Patio central', clue: 'Coloca el QR junto a un cartel de transmisiones de Nora.' },
   route: { key: 'CANCHA-RUTA', location: 'Cancha', clue: 'Coloca el QR en el punto de salida señalado.' }
 };
+
+app.get('/api/qr/:station', async (req, res) => {
+  const point = checkpoints[req.params.station];
+  if (!point) return res.sendStatus(404);
+  const base = `${req.protocol}://${req.get('host')}`;
+  const target = `${base}/checkpoint.html?station=${encodeURIComponent(req.params.station)}&key=${encodeURIComponent(point.key)}`;
+  try {
+    const image = await QRCode.toDataURL(target, { width: 700, margin: 2, errorCorrectionLevel: 'M' });
+    res.json({ target, image });
+  } catch { res.status(500).json({ error: 'No se pudo generar el QR.' }); }
+});
 
 function publicState(room) {
   return {
@@ -40,19 +52,19 @@ function publicState(room) {
 function broadcast(room) { io.to(room.code).emit('room:update', publicState(room)); }
 
 io.on('connection', (socket) => {
-  socket.on('room:create', ({ name }, done) => {
+  socket.on('room:create', ({ name, playerToken }, done) => {
     let code; do { code = makeCode(); } while (rooms.has(code));
     const room = { code, hostId: socket.id, players: new Map(), started: false, startedAt: null,
       solved: [], evidence: [], classifications: {}, finalWon: false, lives: 3, failed: false, physical: {} };
-    room.players.set(socket.id, { id: socket.id, name: cleanName(name) });
+    room.players.set(socket.id, { id: socket.id, name: cleanName(name), token: String(playerToken || socket.id) });
     rooms.set(code, room); socket.join(code); done({ ok: true, state: publicState(room) });
   });
 
-  socket.on('room:join', ({ code, name }, done) => {
+  socket.on('room:join', ({ code, name, playerToken }, done) => {
     const room = rooms.get(String(code || '').toUpperCase());
     if (!room) return done({ ok: false, error: 'No encontramos esa sala. Revisa el código.' });
     if (room.players.size >= 80) return done({ ok: false, error: 'La sala ya alcanzó su capacidad.' });
-    room.players.set(socket.id, { id: socket.id, name: cleanName(name) });
+    room.players.set(socket.id, { id: socket.id, name: cleanName(name), token: String(playerToken || socket.id) });
     socket.join(room.code); broadcast(room); done({ ok: true, state: publicState(room) });
   });
 
@@ -62,11 +74,14 @@ io.on('connection', (socket) => {
     room.started = true; room.startedAt = Date.now(); broadcast(room); done?.({ ok: true });
   });
 
-  socket.on('physical:unlock', ({ code, station, key }, done) => {
+  socket.on('physical:unlock', ({ code, station, key, playerToken }, done) => {
     const room = rooms.get(String(code || '').toUpperCase());
     const point = checkpoints[station];
     if (!room || !room.started || !point || key !== point.key) return done?.({ ok: false, error: 'Este QR o código de partida no es válido o la misión no ha comenzado.' });
-    room.physical[station] = true;
+    const player = [...room.players.values()].find((item) => item.token === String(playerToken));
+    if (!player) return done?.({ ok: false, error: 'Este dispositivo no está registrado en la sala. Vuelve al juego y entra de nuevo.' });
+    room.physical[player.token] ??= {};
+    room.physical[player.token][station] = true;
     broadcast(room);
     done?.({ ok: true, location: point.location });
   });
