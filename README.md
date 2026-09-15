@@ -32,7 +32,7 @@ Después de publicar el proyecto en Render, abre `https://TU-URL-DE-RENDER/qr-pr
 
 Cada punto físico bloquea una estación virtual. Al escanear el QR, el jugador escribe el código de la sala y la evidencia se desbloquea en tiempo real para todo el equipo. Puedes cambiar los nombres, pistas y claves de los lugares en el objeto `checkpoints` de `server.js`.
 
-Los QR se generan desde el servidor. Después de actualizar GitHub, espera a que Render termine el nuevo despliegue antes de abrir `qr-print.html`. Para usar el escáner integrado, abre el juego desde la URL `https` de Render y acepta el permiso de cámara. Si escaneas con la cámara normal de otro teléfono, la pantalla del QR te pedirá tu nombre y el código de sala para entregar la evidencia solo a tu jugador.
+Los QR se cargan directamente en la hoja imprimible junto con el enlace que contienen, para que puedas comprobarlos antes de imprimir. Para usar el escáner integrado, abre el juego desde la URL `https` de Render y acepta el permiso de cámara. Si escaneas con la cámara normal de otro teléfono, la pantalla del QR te pedirá tu nombre y el código de sala para entregar la evidencia solo a tu jugador.
 
 ## Soluciones para la prueba del docente
 

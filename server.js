@@ -1,7 +1,6 @@
 const express = require('express');
 const { Server } = require('socket.io');
 const path = require('path');
-const QRCode = require('qrcode');
 
 const app = express();
 const server = require('http').createServer(app);
@@ -21,16 +20,6 @@ const checkpoints = {
   route: { key: 'CANCHA-RUTA', location: 'Cancha', clue: 'Coloca el QR en el punto de salida señalado.' }
 };
 
-app.get('/api/qr/:station', async (req, res) => {
-  const point = checkpoints[req.params.station];
-  if (!point) return res.sendStatus(404);
-  const base = `${req.protocol}://${req.get('host')}`;
-  const target = `${base}/checkpoint.html?station=${encodeURIComponent(req.params.station)}&key=${encodeURIComponent(point.key)}`;
-  try {
-    const image = await QRCode.toDataURL(target, { width: 700, margin: 2, errorCorrectionLevel: 'M' });
-    res.json({ target, image });
-  } catch { res.status(500).json({ error: 'No se pudo generar el QR.' }); }
-});
 
 function publicState(room) {
   return {
